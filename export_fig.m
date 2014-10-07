@@ -173,6 +173,16 @@
 %           for suggesting it.
 
 function [im, alpha] = export_fig(varargin)
+try
+    hash = githash;
+catch ME
+    hash = ' ';
+    warning('githash didn''t work');
+end
+if strfind(hash, '(or any parent')
+    hash = ' ';
+end
+
 % Make sure the figure is rendered correctly _now_ so that properties like
 % axes limits are up-to-date.
 drawnow;
@@ -299,7 +309,9 @@ if isbitmap(options)
             % Compute the resolution
             res = options.magnify * get(0, 'ScreenPixelsPerInch') / 25.4e-3;
             % Save the png
-            imwrite(A, [options.name '.png'], 'Alpha', double(alpha), 'ResolutionUnit', 'meter', 'XResolution', res, 'YResolution', res);
+            imwrite(A, [options.name '.png'], 'Alpha', double(alpha), ...
+                    'ResolutionUnit', 'meter', 'XResolution', res, ...
+                    'YResolution', res, 'Software', hash);
             % Clear the png bit
             options.png = false;
         end
@@ -362,7 +374,9 @@ if isbitmap(options)
     % Save the images
     if options.png
         res = options.magnify * get(0, 'ScreenPixelsPerInch') / 25.4e-3;
-        imwrite(A, [options.name '.png'], 'ResolutionUnit', 'meter', 'XResolution', res, 'YResolution', res);
+        imwrite(A, [options.name '.png'], 'ResolutionUnit', 'meter', ...
+                'XResolution', res, 'YResolution', res, 'Software', ...
+                hash);
     end
     if options.bmp
         imwrite(A, [options.name '.bmp']);
@@ -374,9 +388,11 @@ if isbitmap(options)
             quality = 95;
         end
         if quality > 100
-            imwrite(A, [options.name '.jpg'], 'Mode', 'lossless');
+            imwrite(A, [options.name '.jpg'], 'Mode', 'lossless', ...
+                    'Comment', hash);
         else
-            imwrite(A, [options.name '.jpg'], 'Quality', quality);
+            imwrite(A, [options.name '.jpg'], 'Quality', quality, ...
+                    'Comment', hash);
         end
     end
     % Save tif images in cmyk if wanted (and possible)
@@ -392,7 +408,9 @@ if isbitmap(options)
             clear C M Y K K_
         end
         append_mode = {'overwrite', 'append'};
-        imwrite(A, [options.name '.tif'], 'Resolution', options.magnify*get(0, 'ScreenPixelsPerInch'), 'WriteMode', append_mode{options.append+1});
+        imwrite(A, [options.name '.tif'], 'Resolution', ...
+                options.magnify*get(0, 'ScreenPixelsPerInch'), ...
+                'WriteMode', append_mode{options.append+1}, 'Description', hash);
     end
 end
 % Now do the vector formats
