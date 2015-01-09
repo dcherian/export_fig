@@ -183,6 +183,9 @@ if strfind(hash, '(or any parent')
     hash = ' ';
 end
 
+% make later detection easier
+hash = ['hash:' hash];
+
 % Make sure the figure is rendered correctly _now_ so that properties like
 % axes limits are up-to-date.
 drawnow;
@@ -473,6 +476,12 @@ if isvector(options)
             % Delete the pdf
             delete(pdf_nam);
         end
+        % write githash to pdf metadata
+        system(['exiftool -overwrite_original -Producer=' hash ' ' options.name '.eps']);
+    end
+    if options.pdf
+        % write githash to pdf metadata
+        system(['exiftool -overwrite_original -Producer=' hash ' ' pdf_nam]);
     end
 end
 if cls
