@@ -187,8 +187,8 @@ if strfind(hash, '(or any parent')
     hash = ' ';
 end
 
-% make later detection easier
-hash = ['hash:' hash];
+% make later detection easier and append any annotations
+hash = ['"hash: ' hash ' | fn: ' getAnnotation '"'];
 
 % Make sure the figure is rendered correctly _now_ so that properties like
 % axes limits are up-to-date.
@@ -502,6 +502,8 @@ else
         set(Hlims(a), 'XLimMode', Xlims{a}, 'YLimMode', Ylims{a}, 'ZLimMode', Zlims{a}, 'XTickMode', Xtick{a}, 'YTickMode', Ytick{a}, 'ZTickMode', Ztick{a});
     end
 end
+disp('Added annotation to fig: ');
+disp(hash);
 end
 
 function [fig, options] = parse_args(nout, varargin)
