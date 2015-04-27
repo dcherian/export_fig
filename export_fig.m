@@ -216,7 +216,7 @@ function [imageData, alpha] = export_fig(varargin)
     end
     hadError = false;
     displaySuggestedWorkarounds = true;
-    
+
     try
         hash = githash;
     catch ME
@@ -226,10 +226,10 @@ function [imageData, alpha] = export_fig(varargin)
     if strfind(hash, '(or any parent')
         hash = ' ';
     end
-    
+
     % make later detection easier
     hash = ['hash:' hash];
-    
+
     % Make sure the figure is rendered correctly _now_ so that properties like
     % axes limits are up-to-date.
     drawnow;
@@ -642,9 +642,12 @@ function [imageData, alpha] = export_fig(varargin)
                 if ~options.pdf
                     % Delete the pdf
                     delete(pdf_nam);
-                    % write githash to pdf metadata
-                    system(['exiftool -overwrite_original -Producer=' hash ' ' pdf_nam]);
                 end
+            end
+            if options.pdf
+                % write githash to pdf metadata
+                system(['exiftool -overwrite_original -Producer=' ...
+                        hash ' ' pdf_nam]);
             end
         end
 
@@ -1145,7 +1148,7 @@ function change_rgb_to_cmyk(fname)  % convert RGB => CMYK within an EPS file
 
         % Replace all gray-scale colors
         fstrm = regexprep(fstrm, '\n([\d.]+) +GC\n', '\n0 0 0 ${num2str(1-str2num($1))} CC\n');
-        
+
         % Replace all RGB colors
         fstrm = regexprep(fstrm, '\n[0.]+ +[0.]+ +[0.]+ +RC\n', '\n0 0 0 1 CC\n');  % pure black
         fstrm = regexprep(fstrm, '\n([\d.]+) +([\d.]+) +([\d.]+) +RC\n', '\n${sprintf(''%.4g '',[1-[str2num($1),str2num($2),str2num($3)]/max([str2num($1),str2num($2),str2num($3)]),1-max([str2num($1),str2num($2),str2num($3)])])} CC\n');
