@@ -642,9 +642,12 @@ function [imageData, alpha] = export_fig(varargin)
                 if ~options.pdf
                     % Delete the pdf
                     delete(pdf_nam);
-                    % write githash to pdf metadata
-                    system(['exiftool -overwrite_original -Producer=' hash ' ' pdf_nam]);
                 end
+            end
+            if options.pdf
+                % write githash to pdf metadata
+                system(['exiftool -overwrite_original -Producer=' ...
+                        hash ' ' pdf_nam]);
             end
         end
 
