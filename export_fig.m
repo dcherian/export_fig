@@ -229,6 +229,8 @@ function [imageData, alpha] = export_fig(varargin)
     
     % make later detection easier
     hash = ['hash:' hash];
+    str = getAnnotation(gcf);
+    hash = [hash ' | ' str];
     
     % Make sure the figure is rendered correctly _now_ so that properties like
     % axes limits are up-to-date.
