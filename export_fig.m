@@ -682,8 +682,8 @@ function [imageData, alpha] = export_fig(varargin)
                     movefile(eps_nam_tmp,  [options.name '.eps'], ...
                              'f');
                     % write githash to pdf metadata
-                    system(['exiftool -overwrite_original -Producer=' ...
-                            hash ' ' options.name '.eps']);
+                    system(['exiftool -overwrite_original -Producer=''' ...
+                            hash ''' ' options.name '.eps']);
                 catch ex
                     if ~options.pdf
                         % Delete the pdf
@@ -699,8 +699,8 @@ function [imageData, alpha] = export_fig(varargin)
             end
             if options.pdf
                 % write githash to pdf metadata
-                system(['exiftool -overwrite_original -Producer=' ...
-                        hash ' ' pdf_nam]);
+                system(['exiftool -overwrite_original -Producer=''' ...
+                        hash ''' ' pdf_nam]);
             end
         end
 
