@@ -233,6 +233,7 @@ function [imageData, alpha] = export_fig(varargin)
 % 19/11/15: Fixed clipboard export in R2015b (thanks to Dan K via FEX)
 %}
 
+    warning off MATLAB:graphicsversion:GraphicsVersionRemoval
     if nargout
         [imageData, alpha] = deal([]);
     end
