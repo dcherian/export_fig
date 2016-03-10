@@ -23,9 +23,11 @@ function print2eps(name, fig, export_options, varargin)
 %       bb_padding - Scalar value of amount of padding to add to border around
 %                    the cropped image, in points (if >1) or percent (if <1).
 %                    Can be negative as well as positive; Default: 0
-%       crop       - Crop amount. Deafult: 0
+%       crop       - Cropping flag. Deafult: 0
 %       fontswap   - Whether to swap non-default fonts in figure. Default: true
 %       renderer   - Renderer used to generate bounding-box. Default: 'opengl'
+%       crop_amounts - 4-element vector of crop amounts: [top,right,bottom,left]
+%                    (available only via the struct alternative)
 %   print_options - Additional parameter strings to be passed to the print command
 
 %{
@@ -80,6 +82,8 @@ function print2eps(name, fig, export_options, varargin)
 % 22/07/15: Fixed issue #91 (thanks to Carlos Moffat)
 % 28/09/15: Fixed issue #108 (thanks to JacobD10)
 % 01/11/15: Fixed issue #112: optional renderer for bounding-box computation (thanks to Jesús Pestana Puerta)
+% 21/02/16: Enabled specifying non-automated crop amounts
+% 22/02/16: Better support + backward compatibility for transparency (issue #108)
 %}
 
     options = {'-loose'};
@@ -93,11 +97,13 @@ function print2eps(name, fig, export_options, varargin)
     end
 
     % Retrieve padding, crop & font-swap values
+    crop_amounts = nan(1,4);  % auto-crop all 4 sides by default
     if isstruct(export_options)
-        try fontswap   = export_options.fontswap;    catch, fontswap = true;     end
-        try bb_crop    = export_options.crop;        catch, bb_crop = 0;         end
-        try bb_padding = export_options.bb_padding;  catch, bb_padding = 0;      end
-        try renderer   = export_options.rendererStr; catch, renderer = 'opengl'; end  % fix for issue #110
+        try fontswap     = export_options.fontswap;     catch, fontswap = true;     end
+        try bb_crop      = export_options.crop;         catch, bb_crop = 0;         end
+        try crop_amounts = export_options.crop_amounts; catch,                      end
+        try bb_padding   = export_options.bb_padding;   catch, bb_padding = 0;      end
+        try renderer     = export_options.rendererStr;  catch, renderer = 'opengl'; end  % fix for issue #110
         if renderer(1)~='-',  renderer = ['-' renderer];  end
     else
         if numel(export_options) > 2  % font-swapping
@@ -238,7 +244,7 @@ function print2eps(name, fig, export_options, varargin)
 
     % Fix issue #83: use numeric handles in HG1
     if ~using_hg2(fig),  fig = double(fig);  end
-    
+
     % Workaround for when transparency is lost through conversion fig>EPS>PDF (issue #108)
     % Replace transparent patch RGB values with an ID value (rare chance that ID color is being used already)
     if using_hg2
@@ -255,13 +261,31 @@ function print2eps(name, fig, export_options, varargin)
     catch
         fstrm = '';
     end
-    
-    % Restore colors for transparent patches and apply the
+
+    % Restore colors for transparent patches/lines and apply the
     % setopacityalpha setting in the EPS file (issue #108)
     if using_hg2
-        [~,fstrm] = eps_maintainAlpha(fig, fstrm, origAlphaColors);
+        [~,fstrm,foundFlags] = eps_maintainAlpha(fig, fstrm, origAlphaColors);
+
+        % If some of the transparencies were not found in the EPS file, then rerun the
+        % export with only the found transparencies modified (backward compatibility)
+        if ~isempty(fstrm) && ~all(foundFlags)
+            foundIdx = find(foundFlags);
+            for objIdx = 1 : sum(foundFlags)
+                colorsIdx = foundIdx(objIdx);
+                colorsData = origAlphaColors{colorsIdx};
+                hObj     = colorsData{1};
+                propName = colorsData{2};
+                newColor = colorsData{4};
+                hObj.(propName).ColorData = newColor;
+            end
+            delete(name);
+            print(fig, options{:}, name);
+            fstrm = read_write_entire_textfile(name);
+            [~,fstrm] = eps_maintainAlpha(fig, fstrm, origAlphaColors(foundFlags));
+        end
     end
-    
+
     % Fix for Matlab R2014b bug (issue #31): LineWidths<0.75 are not set in the EPS (default line width is used)
     try
         if ~isempty(fstrm) && using_hg2(fig)
@@ -392,7 +416,7 @@ function print2eps(name, fig, export_options, varargin)
         % 2. Create a bitmap image and use crop_borders to create the relative
         %    bb with respect to the PageBoundingBox
         [A, bcol] = print2array(fig, 1, renderer);
-        [aa, aa, aa, bb_rel] = crop_borders(A, bcol, bb_padding);
+        [aa, aa, aa, bb_rel] = crop_borders(A, bcol, bb_padding, crop_amounts);
 
         % 3. Calculate the new Bounding Box
         pagew = pagebb_matlab(3)-pagebb_matlab(1);
@@ -430,40 +454,65 @@ function print2eps(name, fig, export_options, varargin)
     read_write_entire_textfile(name, fstrm);
 end
 
-function [StoredColors, fstrm] = eps_maintainAlpha(fig_, fstrm, StoredColors)
-    if nargin == 1
-        ars = findobj(fig_,'Type','Area');
-        StoredColors={};
-        for ar = 1:length(ars)
-            if strcmp(ars(ar).Face.ColorType, 'truecoloralpha')
-                StoredColors{end+1}=ars(ar).Face.ColorData;
-                ars(ar).Face.ColorData = uint8([101; 102; length(StoredColors); 255]);
-            end
-        end
-    else
-        %Find the transparent patches
-        ars = findobj(fig_,'Type','Area');
-        ar_stored = 0;
-        try
-            for ar = 1:length(ars)
-                if strcmp(ars(ar).Face.ColorType, 'truecoloralpha')
-                    ar_stored = ar_stored + 1;
-                    stored = StoredColors{ar_stored}';
-                    %Restore the EPS files patch color
-                    colorID = num2str(round([101 102 ar_stored]/255,3),'%.3g %.3g %.3g'); %ID for searching
-                    originalColor = num2str(round(double(stored(1:end-1))/255,3),'%.3g %.3g %.3g'); %Replace with original color
-                    alpha_ = num2str(round(double(stored(end))/255,3),'%.3g'); %Convert alpha value for EPS
-                    %Find and replace
-                    fstrm = strrep(fstrm, ...
-                        sprintf(['CT\n' colorID ' RC\nN\n']), ...
-                        sprintf(['CT\n' originalColor ' RC\n' alpha_ ' .setopacityalpha true\nN\n']));
-
-                    %Restore the figures patch color
-                    ars(ar).Face.ColorData = StoredColors{ar_stored};
+function [StoredColors, fstrm, foundFlags] = eps_maintainAlpha(fig, fstrm, StoredColors)
+    if nargin == 1  % in: convert transparency in Matlab figure into unique RGB colors
+        hObjs = findall(fig); %findobj(fig,'Type','Area');
+        StoredColors = {};
+        propNames = {'Face','Edge'};
+        for objIdx = 1:length(hObjs)
+            hObj = hObjs(objIdx);
+            for propIdx = 1 : numel(propNames)
+                try
+                    propName = propNames{propIdx};
+                    if strcmp(hObj.(propName).ColorType, 'truecoloralpha')
+                        nColors = length(StoredColors);
+                        oldColor = hObj.(propName).ColorData;
+                        newColor = uint8([101; 102+floor(nColors/255); mod(nColors,255); 255]);
+                        StoredColors{end+1} = {hObj, propName, oldColor, newColor};
+                        hObj.(propName).ColorData = newColor;
+                    end
+                catch
+                    % Never mind - ignore (either doesn't have the property or cannot change it)
                 end
             end
-        catch err
-            fprintf(2, 'Error maintaining transparency in EPS file: %s\n at %s:%d\n', err.message, err.stack(1).file, err.stack(1).line);
+        end
+    else  % restore transparency in Matlab figure by converting back from the unique RGBs
+        %Find the transparent patches
+        wasError = false;
+        nColors = length(StoredColors);
+        foundFlags = false(1,nColors);
+        for objIdx = 1 : nColors
+            colorsData = StoredColors{objIdx};
+            hObj      = colorsData{1};
+            propName  = colorsData{2};
+            origColor = colorsData{3};
+            newColor  = colorsData{4};
+            try
+                %Restore the EPS files patch color
+                colorID   = num2str(round(double(newColor(1:3)') /255,3),'%.3g %.3g %.3g'); %ID for searching
+                origRGB   = num2str(round(double(origColor(1:3)')/255,3),'%.3g %.3g %.3g'); %Replace with original color
+                origAlpha = num2str(round(double(origColor(end)) /255,3),'%.3g'); %Convert alpha value for EPS
+
+                %Find and replace the RGBA values within the EPS text fstrm
+                if strcmpi(propName,'Face')
+                    oldStr = sprintf(['CT\n' colorID ' RC\nN\n']);
+                    newStr = sprintf(['CT\n' origRGB ' RC\n' origAlpha ' .setopacityalpha true\nN\n']);
+                else  %'Edge'
+                    oldStr = sprintf(['CT\n' colorID ' RC\n1 LJ\n']);
+                    newStr = sprintf(['CT\n' origRGB ' RC\n' origAlpha ' .setopacityalpha true\n']);
+                end
+                foundFlags(objIdx) = ~isempty(strfind(fstrm, oldStr));
+                fstrm = strrep(fstrm, oldStr, newStr);
+
+                %Restore the figure object's original color
+                hObj.(propName).ColorData = origColor;
+            catch err
+                % something is wrong - cannot restore transparent color...
+                if ~wasError
+                    fprintf(2, 'Error maintaining transparency in EPS file: %s\n at %s:%d\n', err.message, err.stack(1).file, err.stack(1).line);
+                    wasError = true;
+                end
+            end
         end
     end
 end
