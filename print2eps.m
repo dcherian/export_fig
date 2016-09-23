@@ -64,7 +64,7 @@ function print2eps(name, fig, export_options, varargin)
 % 23/07/13: Bug fix to font swapping. Thanks to George for reporting the
 %           issue.
 % 13/08/13: Fix MATLAB feature of not exporting white lines correctly.
-%           Thanks to Sebastian Heﬂlinger for reporting it.
+%           Thanks to Sebastian Hesslinger for reporting it.
 % 24/02/15: Fix for Matlab R2014b bug (issue #31): LineWidths<0.75 are not
 %           set in the EPS (default line width is used)
 % 25/02/15: Fixed issue #32: BoundingBox problem caused uncropped EPS/PDF files
@@ -84,6 +84,9 @@ function print2eps(name, fig, export_options, varargin)
 % 01/11/15: Fixed issue #112: optional renderer for bounding-box computation (thanks to Jes˙s Pestana Puerta)
 % 21/02/16: Enabled specifying non-automated crop amounts
 % 22/02/16: Better support + backward compatibility for transparency (issue #108)
+% 10/06/16: Fixed issue #159: text handles get cleared by Matlab in the print() command
+% 12/06/16: Improved the fix for issue #159 (in the previous commit)
+% 12/06/16: Fixed issue #158: transparent patch color in PDF/EPS
 %}
 
     options = {'-loose'};
@@ -359,8 +362,16 @@ function print2eps(name, fig, export_options, varargin)
     end
 
     % Reset the font and line colors
-    set(black_text_handles, 'Color', [0 0 0]);
-    set(white_text_handles, 'Color', [1 1 1]);
+    try
+        set(black_text_handles, 'Color', [0 0 0]);
+        set(white_text_handles, 'Color', [1 1 1]);
+    catch
+        % Fix issue #159: redo findall() '*text_handles'
+        black_text_handles = findall(fig, 'Type', 'text', 'Color', [0 0 0]+eps);
+        white_text_handles = findall(fig, 'Type', 'text', 'Color', [1 1 1]-eps);
+        set(black_text_handles, 'Color', [0 0 0]);
+        set(white_text_handles, 'Color', [1 1 1]);
+    end
     set(white_line_handles, 'Color', [1 1 1]);
 
     % Reset paper size
@@ -495,11 +506,11 @@ function [StoredColors, fstrm, foundFlags] = eps_maintainAlpha(fig, fstrm, Store
 
                 %Find and replace the RGBA values within the EPS text fstrm
                 if strcmpi(propName,'Face')
-                    oldStr = sprintf(['CT\n' colorID ' RC\nN\n']);
-                    newStr = sprintf(['CT\n' origRGB ' RC\n' origAlpha ' .setopacityalpha true\nN\n']);
+                    oldStr = sprintf(['\n' colorID ' RC\nN\n']);
+                    newStr = sprintf(['\n' origRGB ' RC\n' origAlpha ' .setopacityalpha true\nN\n']);
                 else  %'Edge'
-                    oldStr = sprintf(['CT\n' colorID ' RC\n1 LJ\n']);
-                    newStr = sprintf(['CT\n' origRGB ' RC\n' origAlpha ' .setopacityalpha true\n']);
+                    oldStr = sprintf(['\n' colorID ' RC\n1 LJ\n']);
+                    newStr = sprintf(['\n' origRGB ' RC\n' origAlpha ' .setopacityalpha true\n']);
                 end
                 foundFlags(objIdx) = ~isempty(strfind(fstrm, oldStr));
                 fstrm = strrep(fstrm, oldStr, newStr);

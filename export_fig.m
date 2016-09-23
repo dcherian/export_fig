@@ -35,8 +35,8 @@ function [imageData, alpha] = export_fig(varargin)
 %   - Improved line and grid line styles
 %   - Anti-aliased graphics (bitmap formats)
 %   - Render images at native resolution (optional for bitmap formats)
-%   - Transparent background supported (pdf, eps, png)
-%   - Semi-transparent patch objects supported (png only)
+%   - Transparent background supported (pdf, eps, png, tif)
+%   - Semi-transparent patch objects supported (png & tif only)
 %   - RGB, CMYK or grayscale output (CMYK only with pdf, eps, tiff)
 %   - Variable image compression, including lossless (pdf, eps, jpg)
 %   - Optionally append to file (pdf, tiff)
@@ -52,8 +52,8 @@ function [imageData, alpha] = export_fig(varargin)
 % output file. For transparent background (and semi-transparent patch
 % objects), use the -transparent option or set the figure 'Color' property
 % to 'none'. To make axes transparent set the axes 'Color' property to
-% 'none'. PDF, EPS and PNG are the only formats that support a transparent
-% background, while only PNG format supports transparency of patch objects.
+% 'none'. PDF, EPS, TIF & PNG are the only formats that support a transparent
+% background; only TIF & PNG formats support transparency of patch objects.
 %
 % The choice of renderer (opengl, zbuffer or painters) has a large impact
 % on the quality of output. The default value (opengl for bitmaps, painters
@@ -93,7 +93,7 @@ function [imageData, alpha] = export_fig(varargin)
 %             where NaN/Inf indicate auto-cropping, 0 means no cropping,
 %             and any other value mean cropping in pixel amounts.
 %   -transparent - option indicating that the figure background is to be
-%                  made transparent (png, pdf and eps output only).
+%                  made transparent (png, pdf, tif and eps output only).
 %   -m<val> - option where val indicates the factor to magnify the
 %             on-screen figure pixel dimensions by when generating bitmap
 %             outputs (does not affect vector formats). Default: '-m1'.
@@ -237,6 +237,9 @@ function [imageData, alpha] = export_fig(varargin)
 % 10/11/15: Custom GS installation webpage for MacOS. Thanks to Andy Hueni via FEX
 % 19/11/15: Fixed clipboard export in R2015b (thanks to Dan K via FEX)
 % 21/02/16: Added -c option for indicating specific crop amounts (idea by Cedric Noordam on FEX)
+% 08/05/16: Added message about possible error reason when groot.Units~=pixels (issue #149)
+% 17/05/16: Fixed case of image YData containing more than 2 elements (issue #151)
+% 08/08/16: Enabled exporting transparency to TIF, in addition to PNG/PDF (issue #168)
 %}
 
     warning off MATLAB:graphicsversion:GraphicsVersionRemoval
@@ -386,11 +389,13 @@ function [imageData, alpha] = export_fig(varargin)
     hasTransparency = ~isempty(findall(fig,'-property','FaceAlpha','-and','-not','FaceAlpha',1));
     hasPatches      = ~isempty(findall(fig,'type','patch'));
     if hasTransparency
-        % Alert if trying to export transparent patches/areas to non-PNG outputs (issue #108)
+        % Alert if trying to export transparent patches/areas to non-supported outputs (issue #108)
+        % http://www.mathworks.com/matlabcentral/answers/265265-can-export_fig-or-else-draw-vector-graphics-with-transparent-surfaces
+        % TODO - use transparency when exporting to PDF by not passing via print2eps
         msg = 'export_fig currently supports transparent patches/areas only in PNG output. ';
         if options.pdf
             warning('export_fig:transparency', '%s\nTo export transparent patches/areas to PDF, use the print command:\n print(gcf, ''-dpdf'', ''%s.pdf'');', msg, options.name);
-        elseif ~options.png
+        elseif ~options.png && ~options.tif  % issue #168
             warning('export_fig:transparency', '%s\nTo export the transparency correctly, try using the ScreenCapture utility on the Matlab File Exchange: http://bit.ly/1QFrBip', msg);
         end
     end
@@ -840,43 +845,59 @@ function [imageData, alpha] = export_fig(varargin)
             end
             fprintf(2, '  and that you do not have <a href="matlab:which export_fig -all">multiple versions</a> of export_fig installed by mistake\n');
             fprintf(2, '  and that you did not made a mistake in the <a href="matlab:help export_fig">expected input arguments</a>\n');
+            try
+                % Alert per issue #149
+                if ~strncmpi(get(0,'Units'),'pixel',5)
+                    fprintf(2, '  or try to set groot''s Units property back to its default value of ''pixels'' (<a href="matlab:web(''https://github.com/altmany/export_fig/issues/149'',''-browser'');">details</a>)\n');
+                end
+            catch
+                % ignore - maybe an old MAtlab release
+            end
             fprintf(2, '\nIf the problem persists, then please <a href="https://github.com/altmany/export_fig/issues">report a new issue</a>.\n\n');
         end
         rethrow(err)
     end
 end
 
+function options = default_options()
+    % Default options used by export_fig
+    options = struct(...
+        'name',         'export_fig_out', ...
+        'crop',         true, ...
+        'crop_amounts', nan(1,4), ...  % auto-crop all 4 image sides
+        'transparent',  false, ...
+        'renderer',     0, ...         % 0: default, 1: OpenGL, 2: ZBuffer, 3: Painters
+        'pdf',          false, ...
+        'eps',          false, ...
+        'png',          false, ...
+        'tif',          false, ...
+        'jpg',          false, ...
+        'bmp',          false, ...
+        'clipboard',    false, ...
+        'colourspace',  0, ...         % 0: RGB/gray, 1: CMYK, 2: gray
+        'append',       false, ...
+        'im',           false, ...
+        'alpha',        false, ...
+        'aa_factor',    0, ...
+        'bb_padding',   0, ...
+        'magnify',      [], ...
+        'resolution',   [], ...
+        'bookmark',     false, ...
+        'closeFig',     false, ...
+        'quality',      [], ...
+        'update',       false, ...
+        'fontswap',     true, ...
+        'gs_options',   {{}});
+end
+
 function [fig, options] = parse_args(nout, fig, varargin)
     % Parse the input arguments
+
     % Set the defaults
-    options = struct(...
-        'name', 'export_fig_out', ...
-        'crop', true, ...
-        'crop_amounts', nan(1,4), ...
-        'transparent', false, ...
-        'renderer', 0, ... % 0: default, 1: OpenGL, 2: ZBuffer, 3: Painters
-        'pdf', false, ...
-        'eps', false, ...
-        'png', false, ...
-        'tif', false, ...
-        'jpg', false, ...
-        'bmp', false, ...
-        'clipboard', false, ...
-        'colourspace', 0, ... % 0: RGB/gray, 1: CMYK, 2: gray
-        'append', false, ...
-        'im',    nout == 1, ...
-        'alpha', nout == 2, ...
-        'aa_factor', 0, ...
-        'bb_padding', 0, ...
-        'magnify', [], ...
-        'resolution', [], ...
-        'bookmark', false, ...
-        'closeFig', false, ...
-        'quality', [], ...
-        'update', false, ...
-        'fontswap', true, ...
-        'gs_options', {{}});
     native = false; % Set resolution to native of an image
+    options = default_options();
+    options.im =    (nout == 1);  % user requested imageData output
+    options.alpha = (nout == 2);  % user requested alpha output
 
     % Go through the other arguments
     skipNext = false;
@@ -1111,12 +1132,12 @@ function [fig, options] = parse_args(nout, fig, varargin)
             if height < 2
                 continue
             end
-            % Account for the image filling only part of the axes, or vice
-            % versa
+            % Account for the image filling only part of the axes, or vice versa
             yl = get(hIm, 'YData');
             if isscalar(yl)
                 yl = [yl(1)-0.5 yl(1)+height+0.5];
             else
+                yl = [min(yl), max(yl)];  % fix issue #151 (case of yl containing more than 2 elements)
                 if ~diff(yl)
                     continue
                 end
